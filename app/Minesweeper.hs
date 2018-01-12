@@ -1,20 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE RecursiveDo #-}
 
-import Reflex
-import Reflex.Dom
+module Minesweeper where
+
 import System.Random
 import Data.Set as Set (Set,empty,insert,delete,size,member,notMember,(\\),intersection,union,toList,fromList)
 import qualified Data.Set as Set
 import Data.List (nub, find, intersperse)
 import Data.Map.Strict as Map (Map, fromList)
 import Data.Text  (Text, pack, unpack)
-import Text.Printf
-import Control.Monad(mapM, foldM)
 import Data.Tuple (swap)
 
--- Types and defaults
+-- Types and defaults:
 
 -- A Minesweeper game is defined by a board dimension, and the sets of
 -- mined, flagged and revealed coordinates.
@@ -37,103 +33,10 @@ difficulties = Map.fromList . map Data.Tuple.swap $
     ("Intermediate", ((16,16), 40)),
     ("Expert", ((30,16), 99))]
 
-startDifficulty = ((8,8), 10)
+initDifficulty = ((8,8), 10) :: Difficulty
 
 
--- GUI
-
-main = do
-  seed <- randomIO
-  let g = mkStdGen seed
-  mainWidget $ do
-     el "h1" $ text "Reflex FRP Minesweeper"
-     Dropdown diffD diffE <- difficultyMenu
-     newGameBtnE <- button "New game"
-     el "br" blank
-     revealBtnE <- button "Reveal"
-     flagBtnE <- button "Flag"
-     currentActionB <- hold click $ leftmost [ (click <$ revealBtnE)
-                                              , (toggleFlag <$ flagBtnE)]
-     currentSeedDyn <- foldDyn (\_ (i,g) -> next g) (next g) newGameBtnE
-     let newGameE = tag (current diffD) newGameBtnE
-     let newGameSeedE = attachPromptlyDyn (fst <$> currentSeedDyn) newGameE
-     el "br" blank
-     widgetHold (aGame currentActionB (seed, startDifficulty)) (aGame currentActionB <$> newGameSeedE)
-     return ()
-
-board :: MonadWidget t m => Game -> m (Event t Coordinate)
-board g =
-  let fields = Set.toList $ allFields (dim g)
-  in do
-    let (w,h) = dim g
-    e <- elAttr "div" (Map.fromList
-                       [("style", pack $ printf
-                          "position:relative;width:%dpx;height:%dpx;border:3px solid AliceBlue" (w*40) (h*40))])
-         $ (leftmost <$>
-            mapM (\(x,y) -> do
-                     let cellStatus = statusFor (x,y) g
-                     e <- cell (status g) cellStatus (x,y) 40
-                     return $ (x,y) <$ e)
-            fields)
-    return e
-
-css :: [(String,String)] -> Text
-css = pack . foldl (++) "" . Data.List.intersperse ";" . map (\ (a,v) -> a ++ ":" ++ v)
-
-cell :: MonadWidget t m => BoardStatus -> CellStatus -> Coordinate -> Int -> m (Event t ())
-cell stat (numNeighbours, mined, revealed, flagged) (x,y) wh = do
-  (btn,_) <- elAttr' "button"
-    (Map.fromList $
-     [ ("style", css [ ("position", "absolute")
-                     , ("top", show (x * wh + 1) ++ "px")
-                     , ("left", show (y * wh + 1) ++ "px")
-                     , ("width", show (wh - 2) ++ "px")
-                     , ("height", show (wh - 2) ++ "px")
-                     , ("border", "none")
-                     , ("background-color",
-                        case stat of
-                          Lost -> case' "white"
-                                     [ (mined && flagged, "green")
-                                     , (mined && not flagged, "red")
-                                     , (flagged, "red") ]
-                          Won -> case' "white"
-                                     [ (mined, "green") ]
-                          Alive -> if revealed then "white" else "grey")]) ])
-    (text . pack $
-      case stat of
-        Alive -> case' "" [ (flagged, "⚑")
-                          , (revealed && numNeighbours > 0, show numNeighbours)]
-        _ -> case' ""
-                   [ (flagged, "⚑")
-                   , (mined, "💣")
-                   , (numNeighbours > 0, show numNeighbours)])
-  return $ domEvent Click btn
-
-difficultyMenu :: MonadWidget t m => m (Dropdown t (Coordinate, Int))
-difficultyMenu = dropdown startDifficulty (constDyn difficulties) def
-
-game :: MonadWidget t m => Behavior t Action -> Game -> m ()
-game actionB initGame = do
-  rec -- :: Dynamic Game
-    gDyn <- foldDyn ($) initGame $ (flip <$> actionB) <@> clickE
-    -- :: Event Coordinate
-    clickE <- (dyn $ board <$> gDyn) >>= switchPromptly never
-  return ()
-
-andThen :: MonadWidget t m => m (Event t a) -> (a -> m b) -> m ()
-andThen start next = do
-  -- andThenDyn :: Dynamic (Event t a)
-  rec andThenDyn <- widgetHold start nextE
-      -- nextE :: Event t (m (Event t a))
-      let nextE = (never <$) <$> next <$> switchPromptlyDyn andThenDyn
-  return ()
-
-aGame :: MonadWidget t m => Behavior t Action -> (Int, Difficulty) -> m ()
-aGame actionB (seed, difficulty@(size, _)) =
-  andThen (board (emptyGame size)) (game actionB . makeGame difficulty seed)
-
-
--- Game mechanics
+-- Game mechanics:
 
 -- A set of n coordinates for mines so that the initial click has no
 -- neighbouring mines. WARNING: will loop forever if there is no
@@ -151,24 +54,8 @@ emptyGame dim = Game empty empty empty dim
 
 makeGame :: Difficulty -> Int -> Coordinate -> Game
 makeGame (dim,numMines) seed init =
-    click (makeGame' (dim,numMines) seed init)
+    click (Game (makeMines init dim seed numMines) empty empty dim)
           init
-makeGame' (dim,numMines) seed init =
-    Game (makeMines init dim seed numMines) empty empty dim
-
-flag, unflag, toggleFlag, revealAround, reveal :: Action
-flag g c = g {flags =
-              if c `member` reveals g
-              then flags g
-              else insert c $ flags g}
-unflag g c = g {flags = delete c $ flags g}
-toggleFlag g c = (if c `member` flags g then unflag else flag) g c
--- RevealAround safely clears the unflagged fields around a revealed field
-revealAround g c
-  | (size $ neighbours c (dim g) `intersection` flags g) >= numNeighbours g c =
-      Set.foldl click g $ (neighbours c (dim g) \\ flags g \\ reveals g)
-  | otherwise = g
-reveal g c = g {reveals = c `insert` reveals g}
 
 click :: Game -> Coordinate -> Game
 click g c
@@ -181,6 +68,26 @@ click g c
     -- mines.
     | otherwise = Set.foldl click (reveal g c)
                   $ (neighbours c (dim g) \\ (reveals g))
+
+flag, unflag, toggleFlag, revealAround, reveal :: Action
+
+flag g c = g {flags =
+              if c `member` reveals g
+              then flags g
+              else insert c $ flags g}
+
+unflag g c = g {flags = delete c $ flags g}
+
+toggleFlag g c = (if c `member` flags g then unflag else flag) g c
+
+-- RevealAround safely clears the unflagged fields around a revealed field
+revealAround g c
+  | (size $ neighbours c (dim g) `intersection` flags g) >= numNeighbours g c =
+      Set.foldl click g $ (neighbours c (dim g) \\ flags g \\ reveals g)
+  | otherwise = g
+
+reveal g c = g {reveals = c `insert` reveals g}
+
 
 status :: Game -> BoardStatus
 status g | mines g `intersection` reveals g /= empty      = Lost
@@ -202,11 +109,3 @@ neighbours (x, y) (bx, by) =
 statusFor :: Coordinate -> Game -> CellStatus
 statusFor c g =
   (numNeighbours g c, member c (mines g), member c (reveals g), member c (flags g))
-
-
--- Utilities
-
--- from https://wiki.haskell.org/Case
-case' :: a -> [(Bool, a)] -> a
-case' def = maybe def snd . find fst
-

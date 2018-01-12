@@ -13,8 +13,8 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 executable reflex-minesweeper
-  main-is:             Minesweeper.hs
-  -- other-modules:       
+  main-is:             Main.hs
+  --  other-modules:
   -- other-extensions:    
   ghc-options: -threaded
   build-depends:       base >=4.9 && <4.10
