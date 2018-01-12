@@ -1,0 +1,27 @@
+name:                reflex-minesweeper
+version:             0.1.0.0
+synopsis:            Minesweeper in Reflex FRP
+-- description:         
+license:             GPL-3
+license-file:        LICENSE
+author:              Adriaan Leijnse
+maintainer:           
+-- copyright:
+category:            Game
+build-type:          Simple
+-- extra-source-files:  ChangeLog.md
+cabal-version:       >=1.10
+
+executable reflex-minesweeper
+  main-is:             Minesweeper.hs
+  -- other-modules:       
+  -- other-extensions:    
+  ghc-options: -threaded
+  build-depends:       base >=4.9 && <4.10
+                     , reflex
+                     , reflex-dom
+                     , containers
+                     , text
+                     , random
+  -- hs-source-dirs:      
+  default-language:    Haskell2010
