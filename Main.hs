@@ -55,8 +55,8 @@ cell stat (numNeighbours, mined, revealed, flagged) (x,y) wh = do
   (btn,_) <- elAttr' "button"
     (Map.fromList $
      [ ("style", css [ ("position", "absolute")
-                     , ("top", show (x * wh + 1) ++ "px")
-                     , ("left", show (y * wh + 1) ++ "px")
+                     , ("left", show (x * wh + 1) ++ "px")
+                     , ("top", show (y * wh + 1) ++ "px")
                      , ("width", show (wh - 2) ++ "px")
                      , ("height", show (wh - 2) ++ "px")
                      , ("border", "none")
