@@ -36,8 +36,7 @@ main = do
 
 board :: MonadWidget t m => Game -> m (Event t Coordinate)
 board g =
-  let fields = Set.toList $ allFields (dim g)
-  in do
+  do
     let (w,h) = dim g
     e <- elAttr "div" (Map.fromList
                        [("style", pack $ printf
@@ -47,7 +46,7 @@ board g =
                      let cellStatus = statusFor (x,y) g
                      e <- cell (status g) cellStatus (x,y) 40
                      return $ (x,y) <$ e)
-            fields)
+            (Set.toList $ fields g))
     return e
 
 cell :: MonadWidget t m => BoardStatus -> CellStatus -> Coordinate -> Int -> m (Event t ())

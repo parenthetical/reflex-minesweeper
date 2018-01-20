@@ -14,7 +14,8 @@ import Data.Tuple (swap)
 
 -- A Minesweeper game is defined by a board dimension, and the sets of
 -- mined, flagged and revealed coordinates.
-data Game = Game { mines :: Coords,
+data Game = Game { fields :: Coords,
+                   mines :: Coords,
                    reveals :: Coords,
                    flags :: Coords,
                    dim :: BoardDim } deriving Show
@@ -50,12 +51,13 @@ makeMines init dim@(dx, dy) seed n =
                 randomCoords
 
 emptyGame :: BoardDim -> Game
-emptyGame dim = Game empty empty empty dim
+emptyGame (dx,dy) =
+  Game (Set.fromList [(x,y) | x <- [0..dx-1], y <- [0..dy-1]])
+       empty empty empty (dx,dy)
 
 makeGame :: Difficulty -> Int -> Coordinate -> Game
 makeGame (dim,numMines) seed init =
-    click (Game (makeMines init dim seed numMines) empty empty dim)
-          init
+  click ((emptyGame dim) {mines = makeMines init dim seed numMines}) init
 
 click :: Game -> Coordinate -> Game
 click g c
@@ -91,20 +93,17 @@ reveal g c = g {reveals = c `insert` reveals g}
 
 status :: Game -> BoardStatus
 status g | mines g `intersection` reveals g /= empty      = Lost
-         | mines g `union` reveals g == allFields (dim g) = Won
+         | mines g `union` reveals g == fields g          = Won
          | otherwise                                      = Alive
 
 numNeighbours :: Game -> Coordinate -> Int
 numNeighbours g c = size $ neighbours c (dim g) `intersection` mines g
 
-allFields :: BoardDim -> Coords
-allFields (dx,dy) = Set.fromList [(x,y) | x <- [0..dx-1], y <- [0..dy-1]]
-
 neighbours :: Coordinate -> BoardDim -> Coords
-neighbours (x, y) (bx, by) =
-  Set.fromList . filter (\(x,y) -> (x >= 0 && x < bx && y >= 0 && y < by)) $
-  [ (x+1,y),(x,y+1),(x-1,y),(x,y-1)
-  , (x+1,y+1),(x-1,y-1),(x-1,y+1),(x+1,y-1)]
+neighbours (x, y) (dx,dy) =
+  Set.fromList . filter (\(x,y) -> (x >= 0 && x < dx && y >= 0 && y < dy)) $
+               [ (x+1,y),(x,y+1),(x-1,y),(x,y-1)
+               , (x+1,y+1),(x-1,y-1),(x-1,y+1),(x+1,y-1)]
 
 statusFor :: Coordinate -> Game -> CellStatus
 statusFor c g =
