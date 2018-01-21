@@ -15,6 +15,8 @@ import Control.Monad(mapM, foldM)
 import Data.Tuple (swap)
 import Minesweeper
 
+
+
 main = do
   seed <- randomIO
   let g = mkStdGen seed
@@ -23,18 +25,13 @@ main = do
      Dropdown diffD diffE <- difficultyMenu
      newGameBtnE <- button "New game"
      el "br" blank
-     revealBtnE <- button "Reveal"
-     flagBtnE <- button "Flag"
-     currentActionB <- hold click $ leftmost [ (click <$ revealBtnE)
-                                              , (toggleFlag <$ flagBtnE)]
      currentSeedDyn <- foldDyn (\_ (i,g) -> next g) (next g) newGameBtnE
      let newGameE = tag (current diffD) newGameBtnE
      let newGameSeedE = attachPromptlyDyn (fst <$> currentSeedDyn) newGameE
-     el "br" blank
-     widgetHold (aGame currentActionB (seed, initDifficulty)) (aGame currentActionB <$> newGameSeedE)
+     widgetHold (aGame (seed, initDifficulty)) (aGame <$> newGameSeedE)
      return ()
 
-board :: MonadWidget t m => Game -> m (Event t Coordinate)
+board :: MonadWidget t m => Game -> m (Event t (Coordinate, Action))
 board g =
   do
     let (w,h) = dim g
@@ -45,11 +42,11 @@ board g =
             mapM (\(x,y) -> do
                      let cellStatus = statusFor (x,y) g
                      e <- cell (status g) cellStatus (x,y) 40
-                     return $ (x,y) <$ e)
+                     return $ (\ action -> ((x,y), action)) <$> e)
             (Set.toList $ fields g))
     return e
 
-cell :: MonadWidget t m => BoardStatus -> CellStatus -> Coordinate -> Int -> m (Event t ())
+cell :: MonadWidget t m => BoardStatus -> CellStatus -> Coordinate -> Int -> m (Event t Action)
 cell stat (numNeighbours, mined, revealed, flagged) (x,y) wh = do
   (btn,_) <- elAttr' "button"
     (Map.fromList $
@@ -76,23 +73,23 @@ cell stat (numNeighbours, mined, revealed, flagged) (x,y) wh = do
                    [ (flagged, "⚑")
                    , (mined, "💣")
                    , (numNeighbours > 0, show numNeighbours)])
-  return $ domEvent Click btn
+  Reflex.debounce 0.3 (leftmost [click <$ domEvent Click btn, toggleFlag <$ domEvent Dblclick btn])
 
-difficultyMenu :: MonadWidget t m => m (Dropdown t (Coordinate, Int))
+difficultyMenu :: MonadWidget t m => m (Dropdown t (BoardDim, Int))
 difficultyMenu =
   dropdown initDifficulty (constDyn difficulties) def
 
-game :: MonadWidget t m => Behavior t Action -> Game -> m ()
-game actionB initGame = do
+game :: MonadWidget t m => Game -> m ()
+game initGame = do
   rec -- :: Dynamic Game
-    gDyn <- foldDyn ($) initGame $ (flip <$> actionB) <@> clickE
-    -- :: Event Coordinate
+    gDyn <- foldDyn (\ (coordinate,action) g -> action g coordinate) initGame clickE
+    -- :: Event (Coordinate, Action)
     clickE <- (dyn $ board <$> gDyn) >>= switchPromptly never
   return ()
 
-aGame :: MonadWidget t m => Behavior t Action -> (Int, Difficulty) -> m ()
-aGame actionB (seed, difficulty@(size, _)) =
-  andThen (board (emptyGame size)) (game actionB . makeGame difficulty seed)
+aGame :: MonadWidget t m => (Int, Difficulty) -> m ()
+aGame (seed, difficulty@(size, _)) =
+  andThen (board (emptyGame size)) (\ (initCoordinate, _) -> game $ makeGame difficulty seed initCoordinate)
 
 
 -- Utilities:
